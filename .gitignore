@@ -1,0 +1,5 @@
+.env
+__pycache__/
+*.pyc
+hotpot_dev_distractor_v1.json
+run.log
