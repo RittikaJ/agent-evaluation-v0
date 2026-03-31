@@ -371,10 +371,20 @@ def evaluate():
         }
         all_scores.append(scores)
 
-        # Upload scores to Langfuse
-        for score_name, score_val in scores.items():
-            if score_name == "redundancy":
-                continue
+        # Compute composite for this item
+        reasoning_norm = reasoning_avg / 5.0
+        item_composite = 0.4 * answer_f1 + 0.35 * traj_score + 0.25 * reasoning_norm
+
+        # Upload business-friendly scores to Langfuse (7 per trace)
+        langfuse_scores = {
+            "Answer Accuracy": answer_f1,
+            "Evidence Quality": traj_score,
+            "Groundedness": groundedness,
+            "Reasoning Quality": reasoning_coherence,
+            "Search Quality": search_strategy,
+            "Overall Score": item_composite,
+        }
+        for score_name, score_val in langfuse_scores.items():
             langfuse.create_score(
                 name=score_name,
                 value=score_val,
