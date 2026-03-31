@@ -2,6 +2,8 @@
 
 A complete **agent evaluation pipeline** — scoring a Claude-based QA agent on multi-hop questions across answer correctness, trajectory quality, and reasoning quality, all tracked in Langfuse.
 
+![Run & Evaluate Demo](assets/run_and_evaluate.gif)
+
 ## Quick Start
 
 ```bash
@@ -21,240 +23,68 @@ python evaluate.py
 streamlit run app.py
 ```
 
+## How It Works
+
+A **Claude Sonnet 4.6** agent answers 10 multi-hop questions from [HotpotQA](https://hotpotqa.github.io/) using two tools (`search_paragraphs` and `read_paragraph`). Each question is scored across **3 layers**:
+
+| Layer | Weight | What It Measures |
+|-------|--------|-----------------|
+| **Answer Score** | 40% | Token F1 and exact match vs gold answer |
+| **Trajectory Score** | 35% | Did it find the right evidence? (retrieval F1, action order, efficiency) |
+| **Reasoning Score** | 25% | LLM-as-judge: groundedness, reasoning coherence, search strategy |
+
+```
+composite = 0.4 * answer + 0.35 * trajectory + 0.25 * reasoning
+```
+
+For detailed evaluation methodology, see [EVALUATION.md](EVALUATION.md).
+
+## Langfuse Scores
+
+Each run uploads **7 scores per trace** with business-friendly names:
+
+| Score | Range | Description |
+|-------|-------|------------|
+| **Overall Score** | 0-1 | Weighted composite |
+| **Answer Accuracy** | 0-1 | Token F1 vs gold answer |
+| **Evidence Quality** | 0-1 | Trajectory composite |
+| **Groundedness** | 1-5 | Is the answer backed by evidence? |
+| **Reasoning Quality** | 1-5 | Does the logic make sense? |
+| **Search Quality** | 1-5 | Were searches well-targeted? |
+| **Human Rating** | 0 or 1 | Thumbs up/down from demo app |
+
+![Langfuse Score Trends](assets/langfuse-score-trends.png)
+
+## Demo App
+
+Launch with `streamlit run app.py`:
+
+- **Home** — visual explainer of the 3-layer evaluation
+- **Dataset Explorer** — browse questions, gold answers, trajectories, context paragraphs
+- **Run & Evaluate** — run the agent live, see tool calls, score all 3 layers, upload to Langfuse
+- **Feedback** — thumbs up/down sent to Langfuse as `Human Rating`
+
 ## Project Structure
 
 ```
 agent-evaluation-v0/
-│
-│ ── Agent + Evaluation Pipeline ──
-├── setup_dataset.py      # Downloads HotpotQA, picks 10 questions, uploads to Langfuse
-├── agent.py              # Claude QA agent with search/read tools
-├── system_prompt.md      # Agent instructions
-├── evaluate.py           # 3-layer batch scoring, uploads results to Langfuse
-├── rubrics/              # LLM-as-judge scoring guides
-│   ├── groundedness.md
-│   ├── reasoning_coherence.md
-│   └── search_strategy.md
-├── dataset_local.json    # Local copy of the 10 dataset items
-│
-│ ── Demo App (Streamlit) ──
-├── app.py                # Home page: evaluation explainer
-├── pages/
-│   ├── 1_Dataset_Explorer.py   # Browse questions, gold answers, trajectories
-│   ├── 2_Run_and_Evaluate.py   # Run agent live + score all 3 layers
-│   └── 3_Feedback.py           # Thumbs up/down → Langfuse
-│
-│ ── Config ──
-├── requirements.txt      # anthropic, langfuse, requests, python-dotenv, streamlit
-├── .env                  # API keys (not committed)
-├── .gitignore
-├── PLAN.md               # Detailed implementation plan
-└── README.md             # This file
+├── setup_dataset.py          # Downloads HotpotQA, uploads to Langfuse
+├── agent.py                  # Claude QA agent with search/read tools
+├── evaluate.py               # 3-layer batch scoring
+├── rubrics/                  # LLM-as-judge scoring guides
+├── app.py                    # Streamlit home page
+├── pages/                    # Streamlit pages (explorer, run, feedback)
+├── dataset_local.json        # Local copy of 10 dataset items
+├── requirements.txt          # anthropic, langfuse>=4.0.0, streamlit, etc.
+└── EVALUATION.md             # Detailed evaluation methodology
 ```
-
----
-
-## Dataset
-
-**Source**: [HotpotQA](https://hotpotqa.github.io/) dev distractor set (7,405 multi-hop questions).
-
-We select **10 questions** (5 bridge + 5 comparison) and upload them to Langfuse as dataset `rittika-hotpotqa-10`. The upload uses deterministic item IDs (`rittika-hotpotqa-10-0` through `rittika-hotpotqa-10-9`) so `setup_dataset.py` is safe to re-run without creating duplicates.
-
-### Question Types
-
-| Type | Reasoning Pattern | Example |
-|------|------------------|---------|
-| **Bridge** | Chained: find A → use A to find B → combine | "What is the population of the city where the Akademisches Kunstmuseum is located?" |
-| **Comparison** | Parallel: find A, find B → compare | "Were both Roger Donaldson and André Cayatte french filmmakers?" |
-
-### What Each Dataset Item Contains
-
-| Field | Contents |
-|-------|----------|
-| `input.question` | The multi-hop question |
-| `input.context` | 10 paragraphs as `[title, [sentences...]]` — only 2 are relevant, 8 are distractors |
-| `expected_output.answer` | Gold answer (short string like "Yes", "327,913") |
-| `expected_output.trajectory` | Ground truth trajectory (ideal tool call sequence, built from `supporting_facts`) |
-| `metadata` | Question type, level, HotpotQA ID, supporting_facts |
-
-### Ground Truth Trajectory
-
-HotpotQA provides `supporting_facts` — the exact `[title, sentence_id]` pairs needed to answer. `setup_dataset.py` converts these into an ideal tool call sequence:
-
-```
-Bridge question:
-  search("Akademisches Kunstmuseum") → read("Akademisches Kunstmuseum")
-  → search("Bonn") → read("Bonn") → answer
-
-Comparison question:
-  search("Roger Donaldson") → read("Roger Donaldson")
-  → search("André Cayatte") → read("André Cayatte") → compare → answer
-```
-
-This gold trajectory is what Layer 2 evaluation compares the agent's actual behavior against.
-
----
-
-## The Agent (`agent.py`)
-
-A Claude-powered QA agent with two tools:
-
-| Tool | Description |
-|------|-------------|
-| `search_paragraphs(query)` | Keyword search over the context paragraphs. Splits query into terms, returns any paragraph whose title + sentences contain at least one term. |
-| `read_paragraph(title)` | Returns all sentences for a specific paragraph by exact title match. |
-
-**Agent loop**: send question to Claude → if Claude uses tools, execute them and send results back → repeat until Claude responds with a text answer (no tools) → return that as the final answer.
-
-**Starting state** (deliberately naive):
-- Minimal system prompt: *"Answer the question. You have access to search_paragraphs and read_paragraph tools."*
-- Simple loop with no planning, no multi-step strategy, no answer extraction logic
-- Max 10 tool iterations before giving up
-
-The agent starts deliberately naive to demonstrate how evaluation reveals weaknesses.
-
----
-
-## Evaluation (`evaluate.py`)
-
-Each question is scored across **three independent layers**, each measuring something different. The layers combine into a composite score, but are also reported individually so you can see exactly where the agent is strong or weak.
-
-### Layer 1: Answer Score (deterministic)
-
-Pure string comparison between the agent's answer and the gold answer.
-
-| Metric | How It Works |
-|--------|-------------|
-| **F1** | Token-level precision/recall after normalization (lowercase, strip articles/punctuation, collapse whitespace). If gold is `"Bonn"` and agent says `"The city of Bonn has a population of 327,913"`, F1 is low because precision is terrible. |
-| **Exact Match** | 1 if normalized predicted == normalized gold, else 0. Strict — `"Barack Obama"` vs `"Obama"` is a miss. |
-
-**`answer_score`** = average F1 across all questions.
-
-### Layer 2: Trajectory Score (deterministic)
-
-Compares the agent's actual tool calls against the gold trajectory.
-
-| Metric | What It Measures | How |
-|--------|-----------------|-----|
-| **Retrieval F1** | Did the agent find the right evidence paragraphs? | Set intersection of retrieved titles vs gold titles → precision, recall, F1 |
-| **Action Order** | Did the agent follow the right tool sequence? | Longest Common Subsequence of tool names (agent vs gold) / gold length |
-| **Efficiency** | Did the agent waste tool calls? | gold action count / max(agent count, gold count) |
-
-**`trajectory_score`** = 0.4 * retrieval_f1 + 0.4 * action_order + 0.2 * efficiency
-
-### Layer 3: Reasoning Score (LLM-as-judge)
-
-Layers 1 and 2 are deterministic — string comparison and sequence matching. But some things can't be measured mechanically: *"Does this reasoning chain actually make sense?"* or *"Is this answer genuinely supported by the evidence?"* That's what LLM-as-judge is for.
-
-**How it works**: For each question, we make 3 separate Claude API calls (using `claude-sonnet-4-20250514`). Each call is a *different* Claude instance acting as a judge — completely independent from the agent being evaluated. The judge receives:
-
-- A **rubric** (from `rubrics/*.md`) defining what each score 1-5 means, plus hard guardrails
-- The **question**
-- The agent's **full trajectory** (every tool call with its input and output)
-- The agent's **final answer**
-- The **gold answer**
-
-Critically, the judge does NOT see the gold `supporting_facts` — so it can't cheat by knowing which paragraphs were needed. It has to evaluate the agent's reasoning on its own merits.
-
-The judge returns a JSON response: `{"reasoning": "brief explanation", "score": N}`. Each rubric has **hard guardrails** that override normal scoring (e.g., "if the agent retrieved nothing but still answered, max score is 2").
-
-**Why LLM-as-judge instead of more deterministic metrics?** It catches failure modes that string matching can't:
-- An agent that gets the right answer by coincidence (good F1 but no reasoning)
-- An agent that searches well but hallucinates an answer unrelated to what it found
-- An agent that copy-pastes the whole question as a search query (lazy but might still retrieve results)
-
-**The three dimensions**:
-
-| Dimension | What the Judge Evaluates | Key Guardrails |
-|-----------|-------------------------|----------------|
-| **Groundedness** | Is the answer supported by evidence the agent actually retrieved? | No paragraphs retrieved → max 2. Contradicts evidence → 1. |
-| **Reasoning Coherence** | Does the multi-hop chain make logical sense? | Only one search for a multi-hop question → max 3. Contradicts own evidence → 1. |
-| **Search Strategy** | Were search queries well-chosen and targeted? | Verbatim copy of full question as query → max 3. No searches → 1. |
-
-**`reasoning_score`** = average of the three dimensions, each normalized from 1-5 to 0-1. This is 25% of the composite — the smallest weight because LLM judges have inherent variance, but it catches things the deterministic metrics cannot.
-
-### Composite Score
-
-```
-composite = 0.4 * answer_score + 0.35 * trajectory_score + 0.25 * reasoning_score
-```
-
-The weighting ensures:
-- Getting the right answer with a bad trajectory scores poorly
-- A good trajectory with a wrong answer also scores poorly
-- The agent must improve both *what* it answers and *how* it gets there
-
-### CLI Output Format (`python evaluate.py`)
-
-```
-Case 1:  answer_f1=0.06  trajectory=0.53  reasoning=2.3  (hard/bridge)
-Case 2:  answer_f1=0.04  trajectory=0.63  reasoning=5.0  (hard/comparison)
-...
----
-answer_score: 0.0611
-  answer_f1: 0.0611
-  answer_em: 0.0000
-trajectory_score: 0.5500
-  retrieval_f1: 0.4000
-  action_order: 0.4750
-  efficiency: 1.0000
-reasoning_score: 0.6333
-  groundedness: 0.5400
-  reasoning_coherence: 0.5200
-  search_strategy: 0.8400
-composite: 0.3753
-```
-
-The CLI shows detailed sub-metrics for debugging. Langfuse receives the 7 business-friendly scores listed above.
-
-### Diagnosing Failures
-
-The per-case breakdown helps identify what's wrong:
-
-| Pattern | Diagnosis | Fix |
-|---------|-----------|-----|
-| Low answer + high trajectory | Agent finds evidence but gives verbose/wrong answer | Improve answer extraction in agent or prompt |
-| High answer + low trajectory | Agent got lucky or hardcoded | Improve search/retrieval strategy |
-| Low trajectory + low reasoning | Agent isn't searching properly | Add multi-hop reasoning to prompt |
-
-### Langfuse Integration
-
-Each evaluation run:
-- Creates a Langfuse experiment with a timestamped name (`hotpotqa_eval_YYYYMMDD_HHMMSS`)
-- Wraps each agent call in a Langfuse trace via `item.run()` context manager
-- Uploads **7 scores per trace** with business-friendly names:
-
-| Score Name | Range | What it measures |
-|-----------|-------|-----------------|
-| `Answer Accuracy` | 0-1 | Token F1 vs gold answer |
-| `Evidence Quality` | 0-1 | Trajectory composite (retrieval + order + efficiency) |
-| `Groundedness` | 1-5 | LLM judge: answer backed by retrieved evidence? |
-| `Reasoning Quality` | 1-5 | LLM judge: multi-hop logic makes sense? |
-| `Search Quality` | 1-5 | LLM judge: search queries well-targeted? |
-| `Overall Score` | 0-1 | Weighted composite of all 3 layers |
-| `Human Rating` | 0 or 1 | Thumbs up/down from the Streamlit demo app |
-
----
-
-## Demo App (`streamlit run app.py`)
-
-A Streamlit app for demoing the evaluation pipeline to your team:
-
-- **Home** — visual explainer of the 3-layer evaluation with examples and scoring formulas
-- **Dataset Explorer** — browse all 10 questions, see gold answers, ideal trajectories, and context paragraphs (gold ones highlighted)
-- **Run & Evaluate** — pick a question, run the agent live, see tool calls step by step, then score across all 3 layers with results uploaded to Langfuse
-- **Feedback** — thumbs up/down on the agent's response, sent to Langfuse as `Human Rating`
-
----
 
 ## Requirements
 
 - Python 3.10+
 - `uv` for package management
-- Anthropic API key (for the QA agent + LLM judge)
-- Langfuse account + API keys (for dataset and eval tracking)
-
-### Environment Variables (`.env`)
+- Anthropic API key (agent + LLM judge)
+- Langfuse account + API keys
 
 ```
 ANTHROPIC_API_KEY=sk-ant-...
