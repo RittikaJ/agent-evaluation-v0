@@ -96,4 +96,3 @@ LANGFUSE_HOST=https://us.cloud.langfuse.com
 ## Attribution
 
 - HotpotQA dataset: [Yang et al., 2018](https://hotpotqa.github.io/) — CC BY-SA 4.0
-- Evaluation patterns adapted from the [Vector Institute Agentic AI Evaluation Bootcamp](https://github.com/VectorInstitute/agentic-ai-evaluation)
