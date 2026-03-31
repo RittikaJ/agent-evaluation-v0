@@ -1,8 +1,6 @@
 # agent-evaluation-v0
 
-An experiment combining **Langfuse-based agent evaluation** with **autoresearch** — an automated loop where Claude Code iteratively improves a QA agent's code and prompts based on eval feedback.
-
-The story: *"I gave an AI agent a broken QA system and watched it fix itself — tracked every improvement in Langfuse."*
+A complete **agent evaluation pipeline** — scoring a Claude-based QA agent on multi-hop questions across answer correctness, trajectory quality, and reasoning quality, all tracked in Langfuse.
 
 ## Quick Start
 
@@ -16,11 +14,11 @@ cp .env.example .env  # then fill in keys
 # 3. Download HotpotQA + upload dataset to Langfuse
 python setup_dataset.py
 
-# 4. Run evaluation (baseline)
+# 4. Run batch evaluation
 python evaluate.py
 
-# 5. (Phase 2) Start the autoresearch loop
-claude "Read program.md and follow its instructions exactly. Start now."
+# 5. Launch the demo app
+streamlit run app.py
 ```
 
 ## Project Structure
@@ -28,24 +26,28 @@ claude "Read program.md and follow its instructions exactly. Start now."
 ```
 agent-evaluation-v0/
 │
-│ ── Phase 1: Agent + Evaluation Pipeline ──
+│ ── Agent + Evaluation Pipeline ──
 ├── setup_dataset.py      # Downloads HotpotQA, picks 10 questions, uploads to Langfuse
-├── agent.py              # Claude QA agent with search/read tools (EDITABLE by autoresearch)
-├── system_prompt.md      # Agent instructions (EDITABLE by autoresearch)
-├── evaluate.py           # 3-layer scoring, uploads results to Langfuse (read-only)
-├── rubrics/              # LLM-as-judge scoring guides (read-only)
+├── agent.py              # Claude QA agent with search/read tools
+├── system_prompt.md      # Agent instructions
+├── evaluate.py           # 3-layer batch scoring, uploads results to Langfuse
+├── rubrics/              # LLM-as-judge scoring guides
 │   ├── groundedness.md
 │   ├── reasoning_coherence.md
 │   └── search_strategy.md
-├── requirements.txt      # anthropic, langfuse, requests, python-dotenv
+├── dataset_local.json    # Local copy of the 10 dataset items
+│
+│ ── Demo App (Streamlit) ──
+├── app.py                # Home page: evaluation explainer
+├── pages/
+│   ├── 1_Dataset_Explorer.py   # Browse questions, gold answers, trajectories
+│   ├── 2_Run_and_Evaluate.py   # Run agent live + score all 3 layers
+│   └── 3_Feedback.py           # Thumbs up/down → Langfuse
+│
+│ ── Config ──
+├── requirements.txt      # anthropic, langfuse, requests, python-dotenv, streamlit
 ├── .env                  # API keys (not committed)
 ├── .gitignore
-│
-│ ── Phase 2: Autoresearch Loop ──
-├── program.md            # Loop instructions for Claude Code (read-only)
-├── results.tsv           # Score log across iterations (append-only)
-│
-│ ── Docs ──
 ├── PLAN.md               # Detailed implementation plan
 └── README.md             # This file
 ```
@@ -109,7 +111,7 @@ A Claude-powered QA agent with two tools:
 - Simple loop with no planning, no multi-step strategy, no answer extraction logic
 - Max 10 tool iterations before giving up
 
-Phase 2's autoresearch loop improves `agent.py` and `system_prompt.md` to raise scores.
+The agent starts deliberately naive to demonstrate how evaluation reveals weaknesses.
 
 ---
 
@@ -177,31 +179,33 @@ The judge returns a JSON response: `{"reasoning": "brief explanation", "score": 
 composite = 0.4 * answer_score + 0.35 * trajectory_score + 0.25 * reasoning_score
 ```
 
-This is **the metric Phase 2 optimizes**. The weighting ensures:
+The weighting ensures:
 - Getting the right answer with a bad trajectory scores poorly
 - A good trajectory with a wrong answer also scores poorly
 - The agent must improve both *what* it answers and *how* it gets there
 
-### Output Format
+### CLI Output Format (`python evaluate.py`)
 
 ```
-Case 1:  answer_f1=0.08  trajectory=0.80  reasoning=5.0  (hard/bridge)
+Case 1:  answer_f1=0.06  trajectory=0.53  reasoning=2.3  (hard/bridge)
 Case 2:  answer_f1=0.04  trajectory=0.63  reasoning=5.0  (hard/comparison)
 ...
 ---
-answer_score: 0.0528
-  answer_f1: 0.0528
+answer_score: 0.0611
+  answer_f1: 0.0611
   answer_em: 0.0000
-trajectory_score: 0.6195
-  retrieval_f1: 0.4238
-  action_order: 0.6250
+trajectory_score: 0.5500
+  retrieval_f1: 0.4000
+  action_order: 0.4750
   efficiency: 1.0000
-reasoning_score: 0.8200
-  groundedness: 0.7600
-  reasoning_coherence: 0.7800
-  search_strategy: 0.9200
-composite: 0.4429
+reasoning_score: 0.6333
+  groundedness: 0.5400
+  reasoning_coherence: 0.5200
+  search_strategy: 0.8400
+composite: 0.3753
 ```
+
+The CLI shows detailed sub-metrics for debugging. Langfuse receives the 7 business-friendly scores listed above.
 
 ### Diagnosing Failures
 
@@ -218,26 +222,28 @@ The per-case breakdown helps identify what's wrong:
 Each evaluation run:
 - Creates a Langfuse experiment with a timestamped name (`hotpotqa_eval_YYYYMMDD_HHMMSS`)
 - Wraps each agent call in a Langfuse trace via `item.run()` context manager
-- Uploads per-item scores (answer_f1, retrieval_f1, groundedness, etc.) linked to each trace
-- All visible in the Langfuse dashboard for comparison across runs
+- Uploads **7 scores per trace** with business-friendly names:
+
+| Score Name | Range | What it measures |
+|-----------|-------|-----------------|
+| `Answer Accuracy` | 0-1 | Token F1 vs gold answer |
+| `Evidence Quality` | 0-1 | Trajectory composite (retrieval + order + efficiency) |
+| `Groundedness` | 1-5 | LLM judge: answer backed by retrieved evidence? |
+| `Reasoning Quality` | 1-5 | LLM judge: multi-hop logic makes sense? |
+| `Search Quality` | 1-5 | LLM judge: search queries well-targeted? |
+| `Overall Score` | 0-1 | Weighted composite of all 3 layers |
+| `Human Rating` | 0 or 1 | Thumbs up/down from the Streamlit demo app |
 
 ---
 
-## Phase 2: Autoresearch Loop
+## Demo App (`streamlit run app.py`)
 
-An automated loop where Claude Code iteratively improves the agent:
+A Streamlit app for demoing the evaluation pipeline to your team:
 
-1. Run `python evaluate.py` → get current scores
-2. Analyze per-case failures (which questions fail? why?)
-3. Edit `agent.py` and/or `system_prompt.md` with an improvement
-4. Commit, re-evaluate, keep if score improved or revert if worse
-5. Repeat
-
-**Rules**: can only edit `agent.py` and `system_prompt.md`. Cannot edit `evaluate.py` or `setup_dataset.py`. Cannot install new packages or hardcode answers.
-
-**Expected progression**: ~0.05 answer_score baseline → 0.80+ after 15-20 iterations.
-
-Progress is logged to `results.tsv` and each iteration creates a new Langfuse experiment.
+- **Home** — visual explainer of the 3-layer evaluation with examples and scoring formulas
+- **Dataset Explorer** — browse all 10 questions, see gold answers, ideal trajectories, and context paragraphs (gold ones highlighted)
+- **Run & Evaluate** — pick a question, run the agent live, see tool calls step by step, then score across all 3 layers with results uploaded to Langfuse
+- **Feedback** — thumbs up/down on the agent's response, sent to Langfuse as `Human Rating`
 
 ---
 
@@ -247,7 +253,6 @@ Progress is logged to `results.tsv` and each iteration creates a new Langfuse ex
 - `uv` for package management
 - Anthropic API key (for the QA agent + LLM judge)
 - Langfuse account + API keys (for dataset and eval tracking)
-- Claude Code (for running the Phase 2 autoresearch loop)
 
 ### Environment Variables (`.env`)
 
