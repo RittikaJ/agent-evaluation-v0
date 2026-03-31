@@ -1,5 +1,5 @@
 anthropic
-langfuse
+langfuse>=4.0.0
 requests
 python-dotenv
 streamlit
