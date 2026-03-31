@@ -37,7 +37,7 @@ A **Claude Sonnet 4.6** agent answers 10 multi-hop questions from [HotpotQA](htt
 composite = 0.4 * answer + 0.35 * trajectory + 0.25 * reasoning
 ```
 
-For detailed evaluation methodology, see [EVALUATION.md](EVALUATION.md).
+For detailed evaluation methodology, see [evaluation.md](evaluation.md).
 
 ## Langfuse Scores
 
