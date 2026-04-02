@@ -312,11 +312,8 @@ def evaluate():
 
         print(f"Case {i+1}: {question[:60]}...")
 
-        # Run agent within a Langfuse dataset run (creates trace automatically)
-        with item.run(
-            run_name=experiment_name,
-            run_metadata={"question_type": metadata.get("type"), "question_level": metadata.get("level")},
-        ) as span:
+        # Run agent and link trace to Langfuse dataset item (Langfuse v4 API)
+        with langfuse.start_as_current_observation(name=experiment_name) as span:
             result = run_agent(question, context)
             span.update(
                 input=question,
@@ -324,9 +321,20 @@ def evaluate():
                 metadata={
                     "trajectory_length": len(result["trajectory"]),
                     "token_usage": result["token_usage"],
+                    "question_type": metadata.get("type"),
+                    "question_level": metadata.get("level"),
                 },
             )
             trace_id = span.trace_id
+            try:
+                langfuse.api.dataset_run_items.create(
+                    run_name=experiment_name,
+                    dataset_item_id=item.id,
+                    trace_id=trace_id,
+                    observation_id=span.id,
+                )
+            except Exception as e:
+                print(f"Warning: Could not link trace to dataset run: {e}")
 
         # ── Layer 1: Answer Quality ──
         answer_em = exact_match(result["answer"], gold_answer)

@@ -289,4 +289,80 @@ with col3:
 
 st.divider()
 
-st.caption("Navigate using the sidebar: Dataset Explorer → Run & Evaluate → Feedback")
+# ══════════════════════════════════════════════════════════════════════════════
+# The Showcase Narrative
+# ══════════════════════════════════════════════════════════════════════════════
+
+st.header("📖 Evaluation Story: How It Got There, Not Just What It Said")
+
+st.markdown("""
+> *"We evaluated not just what the agent said — but how it got there."*
+
+Standard QA benchmarks stop at the final answer. Pass or fail. That's not enough when
+your agent uses tools, retrieves evidence, and chains multi-hop reasoning.
+An agent can score 100% by **getting lucky** — or crash to 0% because it asked one
+wrong search query even though its reasoning was perfect. Answer-only metrics miss both.
+
+This pipeline evaluates **three interdependent layers** simultaneously:
+""")
+
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    with st.container(border=True):
+        st.markdown("#### 1️⃣ What did it answer?")
+        st.markdown("""
+        **Token-level F1 & Exact Match**
+
+        The output signal. Did the final answer match the gold answer?
+        Strict, reproducible, zero hallucination.
+
+        *But a correct answer can hide a broken process.*
+        """)
+
+with col2:
+    with st.container(border=True):
+        st.markdown("#### 2️⃣ How did it gather evidence?")
+        st.markdown("""
+        **Trajectory quality: retrieval + order + efficiency**
+
+        The process signal. Did the agent find the right paragraphs?
+        In the right order? Without wasted calls?
+
+        *Evidence of reasoning, not just luck.*
+        """)
+
+with col3:
+    with st.container(border=True):
+        st.markdown("#### 3️⃣ Did it actually reason?")
+        st.markdown("""
+        **LLM-as-judge: groundedness, coherence, search strategy**
+
+        The cognition signal. Was the answer grounded in what it retrieved?
+        Did the multi-hop chain make sense?
+
+        *Catches hallucination that metrics miss.*
+        """)
+
+st.markdown("""
+Only an agent that scores well on **all three** layers can be trusted at scale.
+A high answer F1 with a poor trajectory means it got lucky.
+A good trajectory with a low reasoning score means it searched correctly but
+drew the wrong conclusion — a synthesis bug, not a retrieval bug.
+
+**This decomposition is the difference between knowing an agent is unreliable
+and knowing exactly *why* — and what to fix.**
+""")
+
+st.info(
+    "💡 **New in this release**: "
+    "Plan quality scores (sub-goal completeness & logical order) are now logged to Langfuse. "
+    "Tool call efficacy is tagged per retrieval span. "
+    "Run `python consistency_test.py` to measure brittleness across rephrased questions. "
+    "Use **Failure Analysis** in the sidebar to see retrieval vs synthesis vs planning "
+    "breakdown across all dataset items."
+)
+
+st.divider()
+
+st.caption("Navigate using the sidebar: Dataset Explorer → Run & Evaluate → Feedback → Failure Analysis")
