@@ -6,7 +6,7 @@ via Claude, runs the agent on both the original and rephrased versions (using
 the same context), and reports F1 drop to reveal brittleness.
 
 Usage:
-    python consistency_test.py                          # uses dataset_local.json (10 Qs)
+    python consistency_test.py                          # uses dataset_local.json (20 Qs)
     python consistency_test.py --extra 10               # adds 10 more from hotpot dev set
     python consistency_test.py --output results_consistency.json
 """

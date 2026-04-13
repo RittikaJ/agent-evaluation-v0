@@ -35,7 +35,7 @@ from agent import run_agent
 
 load_dotenv()
 
-DATASET_NAME = "rittika-hotpotqa-10"
+DATASET_NAME = "DeepEval-hotpotqa-20"
 JUDGE_MODEL = "claude-sonnet-4-6"
 
 langfuse = Langfuse(

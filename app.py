@@ -49,9 +49,9 @@ with col1:
 with col2:
     st.subheader("The Dataset")
     col_a, col_b, col_c = st.columns(3)
-    col_a.metric("Questions", "10")
-    col_b.metric("Bridge", "5")
-    col_c.metric("Comparison", "5")
+    col_a.metric("Questions", "20")
+    col_b.metric("Bridge", "10")
+    col_c.metric("Comparison", "10")
 
     st.markdown("""
     **Bridge questions** require chained reasoning:
@@ -266,6 +266,73 @@ with col2:
 st.divider()
 
 # ══════════════════════════════════════════════════════════════════════════════
+# Multi-Layer Comprehensive Evaluation
+# ══════════════════════════════════════════════════════════════════════════════
+
+st.header("Multi-Layer Comprehensive Evaluation")
+
+st.markdown("""
+Beyond the 3-layer composite, the **Comprehensive Run & Evaluate** page scores the agent
+across **all 9 metrics** — giving a complete picture of agent behavior from deterministic
+accuracy to LLM-judged reasoning quality to plan-level assessment.
+""")
+
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    with st.container(border=True):
+        st.markdown("#### 📏 Deterministic Metrics")
+        st.markdown("""
+        Fast, reproducible, no LLM involved.
+
+        | Metric | What it measures |
+        |--------|-----------------|
+        | **Answer F1** | Token-level overlap with gold answer |
+        | **Retrieval F1** | Found the right paragraphs? |
+        | **Action Order** | Correct tool call sequence (LCS) |
+        | **Efficiency** | Minimum calls needed? |
+
+        *Available in both the Core and Comprehensive pages.*
+        """)
+
+with col2:
+    with st.container(border=True):
+        st.markdown("#### 🧠 LLM-Judge Rubric Metrics")
+        st.markdown("""
+        Separate Claude calls with rubric-driven scoring (1–5).
+
+        | Metric | What it measures |
+        |--------|-----------------|
+        | **Groundedness** | Answer backed by retrieved evidence? |
+        | **Reasoning Coherence** | Multi-hop chain makes sense? |
+        | **Search Strategy** | Queries well-chosen & targeted? |
+
+        *Catches hallucination and reasoning gaps that F1 misses.*
+        """)
+
+with col3:
+    with st.container(border=True):
+        st.markdown("#### 🗺️ Plan-Level Metrics")
+        st.markdown("""
+        LLM judge evaluates the agent's planning behavior.
+
+        | Metric | What it measures |
+        |--------|-----------------|
+        | **Plan Quality** | Decomposed into targeted sub-queries? |
+        | **Plan Adherence** | Followed through on search plan? |
+
+        *Evaluates the cognitive strategy, not just the output.*
+        """)
+
+st.info(
+    "💡 Use **Run & Evaluate** in the sidebar for fast core-metric runs (4 metrics, no LLM judge calls). "
+    "Use **Comprehensive Run & Evaluate** for the full 9-metric evaluation with failure diagnosis, "
+    "plan quality, tool efficacy, and cost tracking."
+)
+
+st.divider()
+
+# ══════════════════════════════════════════════════════════════════════════════
 # Failure Diagnosis
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -356,8 +423,11 @@ and knowing exactly *why* — and what to fix.**
 
 st.info(
     "💡 **New in this release**: "
-    "Plan quality scores (sub-goal completeness & logical order) are now logged to Langfuse. "
-    "Tool call efficacy is tagged per retrieval span. "
+    "**Run & Evaluate** now focuses on 4 core deterministic metrics (Answer F1, Retrieval F1, "
+    "Action Order, Efficiency) for fast iteration. "
+    "**Comprehensive Run & Evaluate** adds all 9 metrics including LLM-judge rubric scores "
+    "(Groundedness, Reasoning, Search Strategy) and plan-level scores (Plan Quality, Plan Adherence) "
+    "with failure diagnosis, sub-goal decomposition, tool efficacy, and cost tracking. "
     "Run `python consistency_test.py` to measure brittleness across rephrased questions. "
     "Use **Failure Analysis** in the sidebar to see retrieval vs synthesis vs planning "
     "breakdown across all dataset items."
@@ -365,4 +435,7 @@ st.info(
 
 st.divider()
 
-st.caption("Navigate using the sidebar: Dataset Explorer → Run & Evaluate → Feedback → Failure Analysis")
+st.caption(
+    "Navigate using the sidebar: Dataset Explorer → Run & Evaluate (Core) → Core Feedback → "
+    "Comprehensive Run & Evaluate → Comprehensive Feedback → Failure Analysis"
+)

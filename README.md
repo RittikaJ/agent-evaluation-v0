@@ -74,7 +74,7 @@ agent-evaluation-v0/
 ├── rubrics/                  # LLM-as-judge scoring guides
 ├── app.py                    # Streamlit home page
 ├── pages/                    # Streamlit pages (explorer, run, feedback)
-├── dataset_local.json        # Local copy of 10 dataset items
+├── dataset_local.json        # Local copy of 20 dataset items
 ├── requirements.txt          # anthropic, langfuse>=4.0.0, streamlit, etc.
 └── EVALUATION.md             # Detailed evaluation methodology
 ```

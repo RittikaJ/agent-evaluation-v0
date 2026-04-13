@@ -1,16 +1,16 @@
 """
-Core Feedback page: structured human-in-the-loop evaluation for the Core Run & Evaluate page.
+Comprehensive Feedback page: structured human-in-the-loop evaluation for the
+Comprehensive Run & Evaluate page.
 
 Provides:
-  - 6 dimension ratings (1-5 sliders)
+  - 6 dimension ratings (1-5 sliders) with LLM-judge pre-fills
   - Multi-select failure taxonomy (retrieval / synthesis / planning / efficiency)
   - Correction field if the agent's answer was wrong
   - Free-text reviewer notes
   - Step-level annotation (helpful / unhelpful / harmful per tool call)
+  - Comparison view: human ratings vs LLM judge scores side-by-side
   - Full upload to Langfuse (7 named scores + structured comment)
   - Quick thumbs up/down still available for fast review
-
-For the comprehensive feedback with LLM-judge comparison, use Comprehensive Feedback.
 """
 
 import json
@@ -23,13 +23,12 @@ from langfuse import Langfuse
 
 load_dotenv()
 
-st.set_page_config(page_title="Core Feedback", page_icon="👤", layout="wide")
-st.title("👤 Core Feedback")
+st.set_page_config(page_title="Comprehensive Feedback", page_icon="📋", layout="wide")
+st.title("📋 Comprehensive Feedback")
 st.markdown(
-    "Review the agent's run from **Run & Evaluate (Core)**, rate each dimension, "
+    "Review the agent's run from **Comprehensive Run & Evaluate**, rate each dimension, "
     "tag failure categories, and optionally correct the answer. "
-    "All ratings sync to Langfuse. For comprehensive feedback with LLM-judge comparison, "
-    "use **Comprehensive Feedback** in the sidebar."
+    "All ratings sync to Langfuse. Includes LLM-judge comparison across all 9 metrics."
 )
 st.divider()
 
@@ -52,37 +51,54 @@ def get_langfuse():
 dataset = load_dataset()
 langfuse = get_langfuse()
 
-# ── Guard: require a completed run from Core page ─────────────────────────────
+# ── Guard: require a completed run from Comprehensive page ────────────────────
 
-if "agent_result" not in st.session_state or "trace_id" not in st.session_state:
+if "comp_agent_result" not in st.session_state or "comp_trace_id" not in st.session_state:
     st.warning(
-        "⚠️ No agent run found in this session. "
-        "Go to **Run & Evaluate (Core)**, run a question, then return here."
+        "⚠️ No comprehensive agent run found in this session. "
+        "Go to **Comprehensive Run & Evaluate**, run a question, then return here."
     )
     st.stop()
 
-# Pull everything from session state (Core page keys)
-result = st.session_state.agent_result
-trace_id = st.session_state.trace_id
-idx = st.session_state.get("selected_idx", 0)
+# Pull everything from session state (comp_ prefix keys)
+result = st.session_state.comp_agent_result
+trace_id = st.session_state.comp_trace_id
+idx = st.session_state.get("comp_selected_idx", 0)
 item = dataset[idx]
-all_scores = st.session_state.get("all_scores", {})
+all_scores = st.session_state.get("comp_all_scores", {})
+judge_scores = st.session_state.get("comp_judge_scores", {})
+plan_scores = st.session_state.get("comp_plan_scores", {})
+tool_efficacy = st.session_state.get("comp_tool_efficacy", [])
+subgoal_data = st.session_state.get("comp_subgoal_data", {})
+latency_secs = st.session_state.get("comp_latency_secs", 0.0)
 
 gold_answer = item["expected_output"]["answer"]
 gold_trajectory = item["expected_output"]["trajectory"]
 
-# Simple failure mode label (deterministic only, no LLM judge)
-def _failure_label(a_scores):
+# Derive composite if we have scores
+reasoning_score_norm = (
+    sum(s / 5.0 for s in judge_scores.values()) / 3.0 if judge_scores else 0.0
+)
+composite = (
+    0.4 * all_scores.get("answer_f1", 0)
+    + 0.35 * all_scores.get("trajectory_score", 0)
+    + 0.25 * reasoning_score_norm
+) if all_scores else 0.0
+
+# Failure mode label (uses LLM judge scores when available)
+def _failure_label(a_scores, j_scores):
     f1 = a_scores.get("answer_f1", 0)
     if f1 >= 0.7:
         return "success", "✅ Success"
-    if a_scores.get("retrieval_f1", 0) < 0.5:
+    if a_scores.get("retrieval_f1", 0) < 0.5 and j_scores.get("search_strategy", 1) < 3:
         return "retrieval", "🔍 Retrieval Failure"
-    if f1 < 0.3:
+    if a_scores.get("retrieval_f1", 0) >= 0.5 and j_scores.get("groundedness", 1) < 3:
         return "synthesis", "⚗️ Synthesis Failure"
+    if j_scores.get("reasoning_coherence", 1) < 3:
+        return "planning", "🗺️ Planning Failure"
     return "partial", "⚠️ Partial Failure"
 
-failure_key, failure_label = _failure_label(all_scores)
+failure_key, failure_label = _failure_label(all_scores, judge_scores)
 
 # ── Section 1: Run Context ─────────────────────────────────────────────────────
 
@@ -112,16 +128,25 @@ with col2:
         st.markdown("**Gold Answer**")
         st.markdown(f"**{gold_answer}**")
 
-# Automated scores reference bar (Core metrics only)
+# Automated scores reference bar (all 9 metrics)
 if all_scores:
     st.subheader("Automated Scores (for reference)")
-    c1, c2, c3, c4 = st.columns(4)
+    c1, c2, c3, c4, c5, c6 = st.columns(6)
     c1.metric("Answer F1", f"{all_scores.get('answer_f1', 0)*100:.1f}%")
     c2.metric("Retrieval F1", f"{all_scores.get('retrieval_f1', 0)*100:.1f}%")
-    c3.metric("Action Order", f"{all_scores.get('action_order', 0)*100:.1f}%")
-    c4.metric("Efficiency", f"{all_scores.get('efficiency', 0)*100:.1f}%")
+    c3.metric("Groundedness", f"{judge_scores.get('groundedness', '—')}/5")
+    c4.metric("Reasoning", f"{judge_scores.get('reasoning_coherence', '—')}/5")
+    c5.metric("Search", f"{judge_scores.get('search_strategy', '—')}/5")
+    c6.metric("Composite", f"{composite*100:.1f}%")
 
-# Trajectory view
+    if plan_scores:
+        p1, p2, p3, p4 = st.columns(4)
+        p1.metric("Plan Quality", f"{plan_scores.get('plan_quality', '—')}/5")
+        p2.metric("Plan Adherence", f"{plan_scores.get('plan_adherence', '—')}/5")
+        p3.metric("Step Efficiency", f"{plan_scores.get('step_efficiency', '—')}/5")
+        p4.metric("Latency", f"{latency_secs:.1f}s")
+
+# Trajectory view with efficacy badges
 with st.expander("Agent Trajectory", expanded=False):
     if not result["trajectory"]:
         st.warning("No tool calls were made.")
@@ -132,7 +157,20 @@ with st.expander("Agent Trajectory", expanded=False):
             if tool == "search_paragraphs":
                 st.markdown(f"🔎 **Step {i+1}** SEARCH: `{inp.get('query', '')}`")
             else:
-                st.markdown(f"📖 **Step {i+1}** READ: `{inp.get('title', '')}`")
+                eff = next((e for e in tool_efficacy if e["step"] == i + 1), None)
+                badge = "🟢 cited" if (eff and eff["contributed"]) else "🔴 not cited"
+                st.markdown(f"📖 **Step {i+1}** READ: `{inp.get('title', '')}` — {badge}")
+
+# Sub-goals (if available)
+if subgoal_data and subgoal_data.get("subgoals"):
+    with st.expander(
+        f"Sub-goal Coverage: {subgoal_data.get('coverage_pct', 0)}%", expanded=False
+    ):
+        for sg in subgoal_data["subgoals"]:
+            icon = "✅" if sg.get("addressed") else "❌"
+            st.markdown(f"{icon} **Sub-goal {sg['id']}**: {sg['description']}")
+            if sg.get("evidence"):
+                st.caption(sg["evidence"])
 
 st.divider()
 
@@ -152,15 +190,21 @@ _labels = {
     5: "5 — Excellent",
 }
 
+# Suggest starting values from automated scores (map 0-1 or 1-5 to slider default)
 def _suggest(val_01, fallback=3):
     if val_01 is None:
         return fallback
     return max(1, min(5, round(val_01 * 5)))
 
+def _suggest_from_judge(val_15, fallback=3):
+    if not val_15:
+        return fallback
+    return max(1, min(5, int(val_15)))
+
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    default_overall = _suggest(all_scores.get("answer_f1"), fallback=3)
+    default_overall = _suggest(composite, fallback=3)
     rating_overall = st.select_slider(
         "Overall Quality",
         options=[1, 2, 3, 4, 5],
@@ -179,7 +223,7 @@ with col1:
     st.caption("Is the final answer factually correct and concise?")
 
 with col2:
-    default_search = _suggest(all_scores.get("retrieval_f1"), fallback=3)
+    default_search = _suggest_from_judge(judge_scores.get("search_strategy"), fallback=3)
     rating_search = st.select_slider(
         "Search Strategy",
         options=[1, 2, 3, 4, 5],
@@ -188,17 +232,17 @@ with col2:
     )
     st.caption("Were search queries well-targeted and decomposed?")
 
-    default_evidence = _suggest(all_scores.get("action_order"), fallback=3)
+    default_evidence = _suggest_from_judge(judge_scores.get("groundedness"), fallback=3)
     rating_evidence = st.select_slider(
-        "Evidence Use (Action Order)",
+        "Evidence Use (Groundedness)",
         options=[1, 2, 3, 4, 5],
         value=default_evidence,
         format_func=lambda x: _labels[x],
     )
-    st.caption("Did the agent follow the right tool call sequence?")
+    st.caption("Did the agent's answer reflect what it retrieved?")
 
 with col3:
-    default_reasoning = 3
+    default_reasoning = _suggest_from_judge(judge_scores.get("reasoning_coherence"), fallback=3)
     rating_reasoning = st.select_slider(
         "Reasoning Chain",
         options=[1, 2, 3, 4, 5],
@@ -216,39 +260,44 @@ with col3:
     )
     st.caption("Did the agent avoid unnecessary or redundant steps?")
 
-# ── Human vs Automated Scores Comparison ───────────────────────────────────────
+# ── Human vs LLM Comparison chart ─────────────────────────────────────────────
 
-if all_scores:
-    st.subheader("Human vs Automated Scores Comparison")
+if all_scores and judge_scores:
+    st.subheader("Human vs LLM Judge Comparison")
     st.caption(
-        "Blue = automated scores (normalised to 0–1). Red = your ratings (normalised to 0–1)."
+        "Blue = LLM judge (normalised to 0–1). Red = your ratings (normalised to 0–1). "
+        "Disagreements highlight where the automated judge may need recalibration."
     )
     compare_data = {
-        "Answer F1": (all_scores.get("answer_f1", 0), rating_answer / 5.0),
-        "Retrieval F1": (all_scores.get("retrieval_f1", 0), rating_search / 5.0),
-        "Action Order": (all_scores.get("action_order", 0), rating_evidence / 5.0),
+        "Answer": (all_scores.get("answer_f1", 0), rating_answer / 5.0),
+        "Search Strategy": (judge_scores.get("search_strategy", 1) / 5.0, rating_search / 5.0),
+        "Groundedness": (judge_scores.get("groundedness", 1) / 5.0, rating_evidence / 5.0),
+        "Reasoning": (judge_scores.get("reasoning_coherence", 1) / 5.0, rating_reasoning / 5.0),
         "Efficiency": (all_scores.get("efficiency", 0), rating_efficiency / 5.0),
-        "Overall": (all_scores.get("trajectory_score", 0), rating_overall / 5.0),
+        "Plan Quality": (plan_scores.get("plan_quality", 1) / 5.0 if plan_scores else 0, rating_overall / 5.0),
+        "Overall": (composite, rating_overall / 5.0),
     }
     df_compare = pd.DataFrame(
         {
-            "Automated": [v[0] for v in compare_data.values()],
+            "LLM Judge": [v[0] for v in compare_data.values()],
             "Human Rating": [v[1] for v in compare_data.values()],
         },
         index=list(compare_data.keys()),
     )
     st.bar_chart(df_compare, horizontal=True, color=["#4a90d9", "#e05c5c"])
 
+    # Agreement summary
     disagreements = [
-        k for k, (auto, human) in compare_data.items() if abs(auto - human) > 0.3
+        k for k, (llm, human) in compare_data.items() if abs(llm - human) > 0.3
     ]
     if disagreements:
         st.warning(
-            f"⚠️ Notable disagreement between human and automated scores on: "
-            f"**{', '.join(disagreements)}**."
+            f"⚠️ Notable disagreement between human and LLM judge on: "
+            f"**{', '.join(disagreements)}**. "
+            "Consider whether the rubric needs adjustment for these dimensions."
         )
     else:
-        st.success("✅ Human ratings broadly agree with the automated scores on all dimensions.")
+        st.success("✅ Human ratings broadly agree with the LLM judge on all dimensions.")
 
 st.divider()
 
@@ -351,7 +400,7 @@ with st.expander("📍 Step-Level Annotation (optional)", expanded=False):
                     index=0,
                     horizontal=True,
                     label_visibility="collapsed",
-                    key=f"core_step_ann_{i}",
+                    key=f"comp_step_ann_{i}",
                 )
             step_annotations[i + 1] = annotation
 
@@ -399,7 +448,7 @@ if quick_good:
         name="Human Rating",
         value=1.0,
         trace_id=trace_id,
-        comment="Quick thumbs up from Core feedback UI",
+        comment="Quick thumbs up from Comprehensive feedback UI",
         data_type="NUMERIC",
     )
     langfuse.flush()
@@ -411,7 +460,7 @@ if quick_bad:
         name="Human Rating",
         value=0.0,
         trace_id=trace_id,
-        comment="Quick thumbs down from Core feedback UI",
+        comment="Quick thumbs down from Comprehensive feedback UI",
         data_type="NUMERIC",
     )
     langfuse.flush()
@@ -480,7 +529,7 @@ if submit_full:
         )
 
     # Store feedback summary in session state for cross-page continuity
-    st.session_state.last_feedback = {
+    st.session_state.comp_last_feedback = {
         "trace_id": trace_id,
         "question_idx": idx,
         "overall": rating_overall,
@@ -493,3 +542,4 @@ st.caption(
     f"Reviewing trace `{trace_id}` | "
     f"Question [{idx}]: {item['input']['question'][:60]}..."
 )
+
