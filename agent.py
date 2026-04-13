@@ -126,12 +126,24 @@ def run_agent(question: str, context: list) -> dict:
         {
             "answer": str,
             "trajectory": list,  # List of tool calls with inputs and outputs
-            "token_usage": int,
+            "token_usage": int,  # Total tokens (input + output) for backward compat
+            "token_usage_details": {  # Granular breakdown for accurate cost calculation
+                "input_tokens": int,
+                "output_tokens": int,
+                "cache_read_input_tokens": int,
+                "cache_creation_input_tokens": int,
+            },
         }
     """
     messages = [{"role": "user", "content": question}]
     trajectory = []
     total_tokens = 0
+    usage_details = {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+    }
     max_iterations = 10
 
     for _ in range(max_iterations):
@@ -143,7 +155,13 @@ def run_agent(question: str, context: list) -> dict:
             messages=messages,
         )
 
-        total_tokens += response.usage.input_tokens + response.usage.output_tokens
+        # Accumulate granular token counts from the API response
+        usage = response.usage
+        usage_details["input_tokens"] += usage.input_tokens
+        usage_details["output_tokens"] += usage.output_tokens
+        usage_details["cache_read_input_tokens"] += getattr(usage, "cache_read_input_tokens", 0) or 0
+        usage_details["cache_creation_input_tokens"] += getattr(usage, "cache_creation_input_tokens", 0) or 0
+        total_tokens += usage.input_tokens + usage.output_tokens
 
         # Check if the model wants to use tools
         tool_use_blocks = [b for b in response.content if b.type == "tool_use"]
@@ -156,6 +174,7 @@ def run_agent(question: str, context: list) -> dict:
                 "answer": answer,
                 "trajectory": trajectory,
                 "token_usage": total_tokens,
+                "token_usage_details": usage_details,
             }
 
         # Process tool calls
@@ -186,4 +205,5 @@ def run_agent(question: str, context: list) -> dict:
         "answer": "Unable to determine the answer.",
         "trajectory": trajectory,
         "token_usage": total_tokens,
+        "token_usage_details": usage_details,
     }

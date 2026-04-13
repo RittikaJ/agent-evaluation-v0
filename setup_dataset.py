@@ -1,8 +1,8 @@
 """
 One-time dataset setup script.
 
-Downloads the HotpotQA dev distractor set, selects 10 multi-hop questions
-(5 bridge + 5 comparison), builds ground truth trajectories from supporting_facts,
+Downloads the HotpotQA dev distractor set, selects 20 multi-hop questions
+(10 bridge + 10 comparison), builds ground truth trajectories from supporting_facts,
 and uploads everything to Langfuse as a named dataset.
 
 Safe to re-run: uses deterministic item IDs (DATASET_NAME-{i}) so Langfuse
@@ -26,7 +26,7 @@ load_dotenv()
 
 HOTPOT_URL = "http://curtis.ml.cmu.edu/datasets/hotpot/hotpot_dev_distractor_v1.json"
 HOTPOT_FILE = "hotpot_dev_distractor_v1.json"
-DATASET_NAME = "rittika-hotpotqa-10"
+DATASET_NAME = "DeepEval-hotpotqa-20"
 SEED = 42
 
 
@@ -204,7 +204,7 @@ def upload_to_langfuse(selected_items):
 
 def main():
     data = download_hotpotqa()
-    selected = select_questions(data, n=10)
+    selected = select_questions(data, n=20)
     upload_to_langfuse(selected)
 
 
