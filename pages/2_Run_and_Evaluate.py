@@ -24,7 +24,7 @@ load_dotenv()
 
 st.set_page_config(page_title="Run & Evaluate", page_icon="🤖", layout="wide")
 st.title("🤖 Run & Evaluate")
-st.markdown("Run the agent on a question, then score it across all 3 evaluation layers.")
+st.caption("Pick a question, run the agent live, and see how it scores across answer accuracy, trajectory quality, and reasoning.")
 
 st.divider()
 
@@ -233,7 +233,12 @@ def display_results(result, item, all_scores, judge_scores, trace_id):
             st.caption("Were search queries well-chosen?")
 
     st.divider()
-    st.caption(f"Tokens: {result['token_usage']} | Trace: `{trace_id}` | All scores uploaded to Langfuse.")
+
+    col_left, col_right = st.columns(2)
+    with col_left:
+        st.caption(f"Tokens: {result['token_usage']} | Trace: `{trace_id}` | Scores uploaded to Langfuse.")
+    with col_right:
+        st.page_link("pages/3_Feedback.py", label="Rate this response →", icon="👍")
 
 
 # ── Run Agent ─────────────────────────────────────────────────────────────────
@@ -264,6 +269,51 @@ if st.button("Run Agent & Evaluate", type="primary", use_container_width=True):
             run_metadata={"source": "demo", "question_type": item["metadata"]["type"]},
         ) as span:
             result = run_agent(item["input"]["question"], item["input"]["context"])
+            trace_id = span.trace_id
+
+            # Show tool calls inside the status
+            st.write(f"✅ Agent made **{len(result['trajectory'])} tool calls**:")
+            for i, step in enumerate(result["trajectory"]):
+                tool = step["tool"]
+                if tool == "search_paragraphs":
+                    st.write(f"  🔎 {i+1}. Search: `{step['input'].get('query', '')}`")
+                else:
+                    st.write(f"  📖 {i+1}. Read: `{step['input'].get('title', '')}`")
+            st.write(f"💬 Agent answered: **{result['answer']}**")
+
+            st.write("---")
+            st.write("📊 Computing Layer 1 & 2 scores...")
+
+            # ── Layer 1 ──
+            answer_em = exact_match(result["answer"], gold_answer)
+            answer_f1 = f1_score(result["answer"], gold_answer)
+
+            # ── Layer 2 ──
+            retrieval = paragraph_retrieval_scores(result["trajectory"], gold_trajectory)
+            action_score = action_order_score(result["trajectory"], gold_trajectory)
+            efficiency = search_efficiency(result["trajectory"], gold_trajectory)
+            traj_score = trajectory_composite(retrieval["retrieval_f1"], action_score, efficiency)
+
+            # ── Layer 3 ── (inside the span so judge generations nest under this trace)
+            st.write("🧠 Running LLM judge (3 API calls)...")
+            rubrics = {
+                "groundedness": load_rubric("groundedness"),
+                "reasoning_coherence": load_rubric("reasoning_coherence"),
+                "search_strategy": load_rubric("search_strategy"),
+            }
+
+            judge_scores = {}
+            for name, rubric_text in rubrics.items():
+                st.write(f"  Judging `{name}`...")
+                judge_scores[name] = judge_reasoning(
+                    item["input"]["question"],
+                    result["answer"],
+                    gold_answer,
+                    result["trajectory"],
+                    name,
+                    rubric_text,
+                )
+
             span.update(
                 input=item["input"]["question"],
                 output=result["answer"],
@@ -271,50 +321,6 @@ if st.button("Run Agent & Evaluate", type="primary", use_container_width=True):
                     "trajectory_length": len(result["trajectory"]),
                     "token_usage": result["token_usage"],
                 },
-            )
-            trace_id = span.trace_id
-
-        # Show tool calls inside the status
-        st.write(f"✅ Agent made **{len(result['trajectory'])} tool calls**:")
-        for i, step in enumerate(result["trajectory"]):
-            tool = step["tool"]
-            if tool == "search_paragraphs":
-                st.write(f"  🔎 {i+1}. Search: `{step['input'].get('query', '')}`")
-            else:
-                st.write(f"  📖 {i+1}. Read: `{step['input'].get('title', '')}`")
-        st.write(f"💬 Agent answered: **{result['answer'][:150]}{'...' if len(result['answer']) > 150 else ''}**")
-
-        st.write("---")
-        st.write("📊 Computing Layer 1 & 2 scores...")
-
-        # ── Layer 1 ──
-        answer_em = exact_match(result["answer"], gold_answer)
-        answer_f1 = f1_score(result["answer"], gold_answer)
-
-        # ── Layer 2 ──
-        retrieval = paragraph_retrieval_scores(result["trajectory"], gold_trajectory)
-        action_score = action_order_score(result["trajectory"], gold_trajectory)
-        efficiency = search_efficiency(result["trajectory"], gold_trajectory)
-        traj_score = trajectory_composite(retrieval["retrieval_f1"], action_score, efficiency)
-
-        # ── Layer 3 ──
-        st.write("🧠 Running LLM judge (3 API calls)...")
-        rubrics = {
-            "groundedness": load_rubric("groundedness"),
-            "reasoning_coherence": load_rubric("reasoning_coherence"),
-            "search_strategy": load_rubric("search_strategy"),
-        }
-
-        judge_scores = {}
-        for name, rubric_text in rubrics.items():
-            st.write(f"  Judging `{name}`...")
-            judge_scores[name] = judge_reasoning(
-                item["input"]["question"],
-                result["answer"],
-                gold_answer,
-                result["trajectory"],
-                name,
-                rubric_text,
             )
 
         # ── Compute composite ──
@@ -383,4 +389,4 @@ elif "agent_result" in st.session_state and "all_scores" in st.session_state:
         st.session_state.trace_id,
     )
 else:
-    st.info("Select a question and click 'Run Agent & Evaluate' to start.")
+    st.info("👆 Select a question above and click **Run Agent & Evaluate** to see results here.")

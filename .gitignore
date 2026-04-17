@@ -1,8 +1,11 @@
 .env
+.env.*.bak
+.claude/
 __pycache__/
 *.pyc
 hotpot_dev_distractor_v1.json
 run.log
 dataset_local.json
 PLAN.md
-system_prompt.md
+AGENTS.md
+CLAUDE.md

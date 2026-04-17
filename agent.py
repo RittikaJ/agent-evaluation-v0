@@ -20,10 +20,12 @@ from pathlib import Path
 
 import anthropic
 from dotenv import load_dotenv
+from langfuse import get_client
 
 load_dotenv()
 
 client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+langfuse = get_client()
 MODEL = "claude-sonnet-4-6"
 
 SYSTEM_PROMPT = Path("system_prompt.md").read_text().strip()
@@ -134,14 +136,26 @@ def run_agent(question: str, context: list) -> dict:
     total_tokens = 0
     max_iterations = 10
 
-    for _ in range(max_iterations):
-        response = client.messages.create(
+    for turn in range(max_iterations):
+        with langfuse.start_as_current_generation(
+            name=f"agent-turn-{turn + 1}",
             model=MODEL,
-            max_tokens=1024,
-            system=SYSTEM_PROMPT,
-            tools=TOOLS,
-            messages=messages,
-        )
+            input=messages,
+        ) as generation:
+            response = client.messages.create(
+                model=MODEL,
+                max_tokens=1024,
+                system=SYSTEM_PROMPT,
+                tools=TOOLS,
+                messages=messages,
+            )
+            generation.update(
+                output=[b.model_dump() for b in response.content],
+                usage_details={
+                    "input": response.usage.input_tokens,
+                    "output": response.usage.output_tokens,
+                },
+            )
 
         total_tokens += response.usage.input_tokens + response.usage.output_tokens
 

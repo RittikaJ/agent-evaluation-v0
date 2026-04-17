@@ -253,11 +253,23 @@ def judge_reasoning(
 
 Respond with ONLY a JSON object: {{"reasoning": "brief explanation", "score": N}}"""
 
-    response = judge_client.messages.create(
+    with langfuse.start_as_current_generation(
+        name=f"judge-{rubric_name}",
         model=JUDGE_MODEL,
-        max_tokens=4000,
-        messages=[{"role": "user", "content": prompt}],
-    )
+        input=prompt,
+    ) as generation:
+        response = judge_client.messages.create(
+            model=JUDGE_MODEL,
+            max_tokens=4000,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        generation.update(
+            output=response.content[0].text,
+            usage_details={
+                "input": response.usage.input_tokens,
+                "output": response.usage.output_tokens,
+            },
+        )
 
     text = response.content[0].text.strip()
     try:
@@ -312,12 +324,30 @@ def evaluate():
 
         print(f"Case {i+1}: {question[:60]}...")
 
-        # Run agent within a Langfuse dataset run (creates trace automatically)
+        # Run agent + judges within a Langfuse dataset run so every generation
+        # (agent turns + judge calls) nests under the same trace.
         with item.run(
             run_name=experiment_name,
             run_metadata={"question_type": metadata.get("type"), "question_level": metadata.get("level")},
         ) as span:
             result = run_agent(question, context)
+            trace_id = span.trace_id
+
+            # ── Layer 3: Reasoning Quality (LLM-as-judge) ──
+            # Inside the span so judge generations nest under this trace.
+            groundedness = judge_reasoning(
+                question, result["answer"], gold_answer,
+                result["trajectory"], "groundedness", rubrics["groundedness"],
+            )
+            reasoning_coherence = judge_reasoning(
+                question, result["answer"], gold_answer,
+                result["trajectory"], "reasoning_coherence", rubrics["reasoning_coherence"],
+            )
+            search_strategy = judge_reasoning(
+                question, result["answer"], gold_answer,
+                result["trajectory"], "search_strategy", rubrics["search_strategy"],
+            )
+
             span.update(
                 input=question,
                 output=result["answer"],
@@ -326,7 +356,6 @@ def evaluate():
                     "token_usage": result["token_usage"],
                 },
             )
-            trace_id = span.trace_id
 
         # ── Layer 1: Answer Quality ──
         answer_em = exact_match(result["answer"], gold_answer)
@@ -339,19 +368,6 @@ def evaluate():
         redundancy = redundancy_ratio(result["trajectory"])
         traj_score = trajectory_composite(retrieval["retrieval_f1"], action_score, efficiency)
 
-        # ── Layer 3: Reasoning Quality (LLM-as-judge) ──
-        groundedness = judge_reasoning(
-            question, result["answer"], gold_answer,
-            result["trajectory"], "groundedness", rubrics["groundedness"],
-        )
-        reasoning_coherence = judge_reasoning(
-            question, result["answer"], gold_answer,
-            result["trajectory"], "reasoning_coherence", rubrics["reasoning_coherence"],
-        )
-        search_strategy = judge_reasoning(
-            question, result["answer"], gold_answer,
-            result["trajectory"], "search_strategy", rubrics["search_strategy"],
-        )
         reasoning_avg = (groundedness + reasoning_coherence + search_strategy) / 3.0
 
         scores = {

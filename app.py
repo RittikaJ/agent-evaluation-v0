@@ -12,69 +12,40 @@ st.set_page_config(
     layout="wide",
 )
 
+# ── Sidebar: persistent navigation helper ────────────────────────────────────
+
+with st.sidebar:
+    st.markdown("### How to use this app")
+    st.markdown("""
+    1. **Explore** the dataset
+    2. **Run** the agent on a question
+    3. **Review** scores & give feedback
+    """)
+    st.divider()
+    st.caption("Built with Streamlit + Langfuse")
+
+# ── Hero Section ─────────────────────────────────────────────────────────────
+
 st.title("🧪 Agent Eval")
-st.markdown("#### How to evaluate an AI agent — end to end")
+st.markdown(
+    "Evaluate an AI agent end-to-end: **what it answers**, "
+    "**how it finds evidence**, and **whether its reasoning makes sense**."
+)
 
-st.markdown("""
-This app demonstrates a complete evaluation pipeline for an AI agent that answers
-multi-hop questions. We score the agent on **what it answers**, **how it finds evidence**,
-and **whether its reasoning makes sense** — all tracked in Langfuse.
-""")
+# ── 3-Layer Scoring ──────────────────────────────────────────────────────────
 
-st.divider()
+st.markdown(
+    "We score **3 layers**: answer accuracy, trajectory quality, and reasoning — "
+    "weighted into a single composite."
+)
 
-# ══════════════════════════════════════════════════════════════════════════════
-# The Setup
-# ══════════════════════════════════════════════════════════════════════════════
+st.code("composite = 0.4 × answer + 0.35 × trajectory + 0.25 × reasoning", language=None)
 
-st.header("The Setup")
-
-col1, col2 = st.columns([1, 1])
-
-with col1:
-    st.subheader("The Agent")
-    st.markdown("""
-    A **Claude Sonnet 4.6** agent with two tools:
-
-    | Tool | What it does |
-    |------|-------------|
-    | `search_paragraphs(query)` | Keyword search over context paragraphs |
-    | `read_paragraph(title)` | Read a specific paragraph by title |
-
-    The agent receives a question and 10 context paragraphs.
-    Only **2 are relevant** — the other 8 are distractors.
-    It must figure out which to read and how to combine them.
-    """)
-
-with col2:
-    st.subheader("The Dataset")
-    col_a, col_b, col_c = st.columns(3)
-    col_a.metric("Questions", "10")
-    col_b.metric("Bridge", "5")
-    col_c.metric("Comparison", "5")
-
-    st.markdown("""
-    **Bridge questions** require chained reasoning:
-    > *Find A → use A to discover B → combine A+B to answer*
-
-    **Comparison questions** require parallel retrieval:
-    > *Find A, find B → compare them*
-
-    Source: [HotpotQA](https://hotpotqa.github.io/) dev set
-    """)
-
-st.divider()
-
-# ══════════════════════════════════════════════════════════════════════════════
-# The 3-Layer Evaluation
-# ══════════════════════════════════════════════════════════════════════════════
-
-st.header("The 3-Layer Evaluation")
-
-st.markdown("""
-Most agent evals only check if the answer is correct. We go deeper — scoring
-the agent's **answer**, its **trajectory** (tool calls), and its **reasoning quality**.
-""")
+col1, col2, col3, col4 = st.columns(4)
+col1.metric("Answer Baseline", "6.1%")
+col2.metric("Trajectory Baseline", "55.0%")
+col3.metric("Reasoning Baseline", "63.3%")
+col4.metric("Composite Baseline", "37.5%")
 
 tab1, tab2, tab3 = st.tabs([
     "📝 Layer 1: Answer Score (40%)",
@@ -109,9 +80,9 @@ with tab1:
 
         | | |
         |---|---|
-        | `"Barack Obama"` vs `"Barack Obama"` | ✅ Yes |
-        | `"Barack Obama"` vs `"Obama"` | ❌ No |
-        | `"The United States"` vs `"united states"` | ✅ Yes |
+        | `"Barack Obama"` vs `"Barack Obama"` | Yes |
+        | `"Barack Obama"` vs `"Obama"` | No |
+        | `"The United States"` vs `"united states"` | Yes |
 
         Strict but fair — the standard HotpotQA metric.
         """)
@@ -173,20 +144,11 @@ with tab2:
         *Too few calls get caught by retrieval F1 instead.
         """)
 
-    st.code("trajectory_score = 0.4 * retrieval_f1 + 0.4 * action_order + 0.2 * efficiency", language=None)
+    st.code("trajectory_score = 0.4 × retrieval_f1 + 0.4 × action_order + 0.2 × efficiency", language=None)
 
 with tab3:
     st.markdown("### Does the agent's reasoning actually make sense?")
     st.info("**LLM-as-judge** — a separate Claude call scores each dimension using a rubric")
-
-    st.markdown("""
-    Some things can't be measured with string matching:
-    - Did the agent get lucky, or did it actually reason through the problem?
-    - Is the answer supported by what it retrieved, or did it hallucinate?
-    - Were the search queries targeted, or did it just paste the whole question?
-
-    We make **3 separate Claude API calls**, each with a rubric defining what 1-5 means:
-    """)
 
     col1, col2, col3 = st.columns(3)
 
@@ -236,57 +198,3 @@ with tab3:
     The judge sees: question, full trajectory (tool calls + outputs), agent answer, gold answer.
     It does **not** see the gold supporting facts — so it can't cheat.
     """)
-
-st.divider()
-
-# ══════════════════════════════════════════════════════════════════════════════
-# Composite Score
-# ══════════════════════════════════════════════════════════════════════════════
-
-st.header("Composite Score")
-
-col1, col2 = st.columns([2, 1])
-
-with col1:
-    st.code("composite = 0.4 * answer + 0.35 * trajectory + 0.25 * reasoning", language=None)
-    st.markdown("""
-    The weighting ensures:
-    - Getting the right answer with a bad trajectory scores poorly
-    - A good trajectory with a wrong answer also scores poorly
-    - The agent must improve **both** what it answers and how it gets there
-    """)
-
-with col2:
-    st.markdown("**Baseline (naive agent)**")
-    st.metric("Answer", "6.1%")
-    st.metric("Trajectory", "55.0%")
-    st.metric("Reasoning", "63.3%")
-    st.metric("Composite", "37.5%")
-
-st.divider()
-
-# ══════════════════════════════════════════════════════════════════════════════
-# Failure Diagnosis
-# ══════════════════════════════════════════════════════════════════════════════
-
-st.header("Diagnosing Failures")
-
-st.markdown("The per-question breakdown reveals *why* the agent fails:")
-
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    st.error("**Low answer + High trajectory**")
-    st.markdown("Agent finds the right evidence but gives a verbose or wrong answer. Fix: improve answer extraction.")
-
-with col2:
-    st.error("**High answer + Low trajectory**")
-    st.markdown("Agent got lucky or hardcoded. Fix: improve search and retrieval strategy.")
-
-with col3:
-    st.error("**Low trajectory + Low reasoning**")
-    st.markdown("Agent isn't searching properly at all. Fix: add multi-hop reasoning to the prompt.")
-
-st.divider()
-
-st.caption("Navigate using the sidebar: Dataset Explorer → Run & Evaluate → Feedback")
