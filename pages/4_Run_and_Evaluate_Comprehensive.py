@@ -1,4 +1,4 @@
-"""Comprehensive Run & Evaluate: all 9 metrics — Answer F1, Retrieval F1, Action Order,
+"""LLM-as-Judge Run & Evaluate: all 9 metrics — Answer F1, Retrieval F1, Action Order,
 Efficiency, Groundedness, Reasoning, Search Strategy, Plan Quality, Plan Adherence."""
 
 import json
@@ -25,8 +25,8 @@ from evaluate import (
 
 load_dotenv()
 
-st.set_page_config(page_title="Comprehensive Run & Evaluate", page_icon="🔬", layout="wide")
-st.title("🔬 Comprehensive Run & Evaluate")
+st.set_page_config(page_title="LLM-as-Judge Run & Evaluate", page_icon="🔬", layout="wide")
+st.title("🔬 LLM-as-Judge Run & Evaluate")
 st.markdown(
     "Run the agent on a question and score it across **all 9 evaluation metrics** — "
     "deterministic scores, LLM-judge rubrics, and plan-level assessment — "
@@ -939,7 +939,7 @@ def display_results(result, item, all_scores, judge_scores, plan_scores,
 
 # ── Run Agent ─────────────────────────────────────────────────────────────────
 
-if st.button("▶️ Run Agent & Comprehensive Evaluate", type="primary", use_container_width=True):
+if st.button("▶️ Run Agent & LLM-as-Judge Evaluate", type="primary", use_container_width=True):
     gold_answer = item["expected_output"]["answer"]
     gold_trajectory = item["expected_output"]["trajectory"]
 
@@ -1135,7 +1135,7 @@ elif "comp_agent_result" in st.session_state and "comp_all_scores" in st.session
     if prev_idx != idx:
         st.info(
             f"Showing results from previous run on question [{prev_idx}]. "
-            "Select that question or click 'Run Agent & Comprehensive Evaluate' to run on this one."
+            "Select that question or click 'Run Agent & LLM-as-Judge Evaluate' to run on this one."
         )
 
     display_results(
@@ -1151,5 +1151,5 @@ elif "comp_agent_result" in st.session_state and "comp_all_scores" in st.session
         st.session_state.get("comp_latency_secs", 0.0),
     )
 else:
-    st.info("Select a question and click '▶️ Run Agent & Comprehensive Evaluate' to start.")
+    st.info("Select a question and click '▶️ Run Agent & LLM-as-Judge Evaluate' to start.")
 

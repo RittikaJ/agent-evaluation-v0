@@ -32,13 +32,18 @@ SYSTEM_PROMPT = Path("system_prompt.md").read_text().strip()
 TOOLS = [
     {
         "name": "search_paragraphs",
-        "description": "Search the available context paragraphs by keyword. Returns paragraphs whose title or sentences contain the query terms.",
+        "description": (
+            "Search context paragraphs by keyword. Returns paragraphs whose title or "
+            "sentences contain ANY of the query terms (case-insensitive). Use short, "
+            "specific entity names as queries (1-3 words). Think about WHICH entity "
+            "you need to find before searching."
+        ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "Search query to find relevant paragraphs",
+                    "description": "A short keyword query — use a specific entity name or proper noun (1-3 words)",
                 }
             },
             "required": ["query"],
@@ -46,13 +51,18 @@ TOOLS = [
     },
     {
         "name": "read_paragraph",
-        "description": "Read all sentences of a specific paragraph by its title.",
+        "description": (
+            "Read the full text of a specific paragraph by its exact title. "
+            "Always read a paragraph before drawing conclusions from it — "
+            "search results only show titles. Extract specific facts needed "
+            "for the next reasoning hop."
+        ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "title": {
                     "type": "string",
-                    "description": "The exact title of the paragraph to read",
+                    "description": "The exact title of the paragraph to read (must match a title from search results)",
                 }
             },
             "required": ["title"],
@@ -94,16 +104,22 @@ def execute_read_paragraph(title: str, context: list) -> str | None:
     return None
 
 
-def execute_tool(tool_name: str, tool_input: dict, context: list) -> str:
+def execute_tool(tool_name: str, tool_input: dict, context: list, top_k: int | None = None) -> str:
     """Dispatch a tool call by name and return the result as a string.
 
     This is the bridge between Claude's tool_use blocks and the local
     tool implementations. Returns a human-readable error for unknown tools.
+
+    Args:
+        top_k: If set, limit search_paragraphs results to the top_k matches.
+               Default (None) returns all matches (original behavior).
     """
     if tool_name == "search_paragraphs":
         results = execute_search_paragraphs(tool_input["query"], context)
         if not results:
             return "No paragraphs found matching your query."
+        if top_k is not None:
+            results = results[:top_k]
         return json.dumps(results, indent=2)
     elif tool_name == "read_paragraph":
         result = execute_read_paragraph(tool_input["title"], context)
@@ -114,13 +130,16 @@ def execute_tool(tool_name: str, tool_input: dict, context: list) -> str:
         return f"Unknown tool: {tool_name}"
 
 
-def run_agent(question: str, context: list) -> dict:
+def run_agent(question: str, context: list, config: dict | None = None) -> dict:
     """
     Run the QA agent on a question with given context paragraphs.
 
     Args:
         question: The question to answer
         context: List of [title, [sentences...]] paragraphs to search
+        config: Optional configuration overrides:
+            - "system_prompt" (str): Override the default system prompt text
+            - "top_k" (int): Limit search_paragraphs results to top_k matches
 
     Returns:
         {
@@ -135,6 +154,11 @@ def run_agent(question: str, context: list) -> dict:
             },
         }
     """
+    # Resolve configuration
+    effective_config = config or {}
+    effective_prompt = effective_config.get("system_prompt", SYSTEM_PROMPT)
+    top_k = effective_config.get("top_k")
+
     messages = [{"role": "user", "content": question}]
     trajectory = []
     total_tokens = 0
@@ -149,8 +173,8 @@ def run_agent(question: str, context: list) -> dict:
     for _ in range(max_iterations):
         response = client.messages.create(
             model=MODEL,
-            max_tokens=1024,
-            system=SYSTEM_PROMPT,
+            max_tokens=2048,
+            system=effective_prompt,
             tools=TOOLS,
             messages=messages,
         )
@@ -182,7 +206,7 @@ def run_agent(question: str, context: list) -> dict:
         for tool_block in tool_use_blocks:
             tool_name = tool_block.name
             tool_input = tool_block.input
-            tool_output = execute_tool(tool_name, tool_input, context)
+            tool_output = execute_tool(tool_name, tool_input, context, top_k=top_k)
 
             trajectory.append({
                 "tool": tool_name,

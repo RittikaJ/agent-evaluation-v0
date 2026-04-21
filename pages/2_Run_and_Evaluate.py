@@ -1,4 +1,4 @@
-"""Run & Evaluate (Core): run agent on a question, compute Answer F1, Retrieval F1,
+"""Run & Evaluate (Deterministic): run agent on a question, compute Answer F1, Retrieval F1,
 Action Order, and Efficiency — the 4 deterministic metrics."""
 
 import json
@@ -23,11 +23,11 @@ from evaluate import (
 load_dotenv()
 
 st.set_page_config(page_title="Run & Evaluate", page_icon="🤖", layout="wide")
-st.title("🤖 Run & Evaluate (Core Metrics)")
+st.title("🤖 Run & Evaluate (Deterministic Metrics)")
 st.markdown(
-    "Run the agent on a question and score it on the **4 core deterministic metrics**: "
+    "Run the agent on a question and score it on the **4 deterministic metrics**: "
     "Answer F1, Retrieval F1, Action Order, and Efficiency. "
-    "For the full 9-metric evaluation, use **Comprehensive Run & Evaluate** in the sidebar."
+    "For the full 9-metric evaluation, use **LLM-as-Judge Run & Evaluate** in the sidebar."
 )
 
 st.divider()
@@ -80,17 +80,17 @@ with st.container(border=True):
 # ── Display function ───────────────────────────────────────────────────────────
 
 def display_results(result, item, all_scores, trace_id):
-    """Display the results: Answer Comparison + Trajectory Evaluation (4 core metrics)."""
+    """Display the results: Answer Comparison + Trajectory Evaluation (4 deterministic metrics)."""
     gold_answer = item["expected_output"]["answer"]
     gold_trajectory = item["expected_output"]["trajectory"]
 
     st.divider()
 
     # ══════════════════════════════════════════════════════════════════════
-    # Core Metrics Overview
+    # Deterministic Metrics Overview
     # ══════════════════════════════════════════════════════════════════════
 
-    st.header("📊 Core Metrics")
+    st.header("📊 Deterministic Metrics")
 
     c1, c2, c3, c4 = st.columns(4)
     with c1:

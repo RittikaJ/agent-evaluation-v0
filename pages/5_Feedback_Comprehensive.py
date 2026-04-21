@@ -1,6 +1,6 @@
 """
-Comprehensive Feedback page: structured human-in-the-loop evaluation for the
-Comprehensive Run & Evaluate page.
+LLM-as-Judge Feedback page: structured human-in-the-loop evaluation for the
+LLM-as-Judge Run & Evaluate page.
 
 Provides:
   - 6 dimension ratings (1-5 sliders) with LLM-judge pre-fills
@@ -23,10 +23,10 @@ from langfuse import Langfuse
 
 load_dotenv()
 
-st.set_page_config(page_title="Comprehensive Feedback", page_icon="📋", layout="wide")
-st.title("📋 Comprehensive Feedback")
+st.set_page_config(page_title="LLM-as-Judge Feedback", page_icon="📋", layout="wide")
+st.title("📋 LLM-as-Judge Feedback")
 st.markdown(
-    "Review the agent's run from **Comprehensive Run & Evaluate**, rate each dimension, "
+    "Review the agent's run from **LLM-as-Judge Run & Evaluate**, rate each dimension, "
     "tag failure categories, and optionally correct the answer. "
     "All ratings sync to Langfuse. Includes LLM-judge comparison across all 9 metrics."
 )
@@ -56,7 +56,7 @@ langfuse = get_langfuse()
 if "comp_agent_result" not in st.session_state or "comp_trace_id" not in st.session_state:
     st.warning(
         "⚠️ No comprehensive agent run found in this session. "
-        "Go to **Comprehensive Run & Evaluate**, run a question, then return here."
+        "Go to **LLM-as-Judge Run & Evaluate**, run a question, then return here."
     )
     st.stop()
 

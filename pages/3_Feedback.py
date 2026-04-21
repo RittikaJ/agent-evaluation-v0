@@ -1,5 +1,5 @@
 """
-Core Feedback page: structured human-in-the-loop evaluation for the Core Run & Evaluate page.
+Deterministic Feedback page: structured human-in-the-loop evaluation for the Deterministic Run & Evaluate page.
 
 Provides:
   - 6 dimension ratings (1-5 sliders)
@@ -10,7 +10,7 @@ Provides:
   - Full upload to Langfuse (7 named scores + structured comment)
   - Quick thumbs up/down still available for fast review
 
-For the comprehensive feedback with LLM-judge comparison, use Comprehensive Feedback.
+For the LLM-as-Judge feedback with LLM-judge comparison, use LLM-as-Judge Feedback.
 """
 
 import json
@@ -23,13 +23,13 @@ from langfuse import Langfuse
 
 load_dotenv()
 
-st.set_page_config(page_title="Core Feedback", page_icon="👤", layout="wide")
-st.title("👤 Core Feedback")
+st.set_page_config(page_title="Deterministic Feedback", page_icon="👤", layout="wide")
+st.title("👤 Deterministic Feedback")
 st.markdown(
     "Review the agent's run from **Run & Evaluate (Core)**, rate each dimension, "
     "tag failure categories, and optionally correct the answer. "
     "All ratings sync to Langfuse. For comprehensive feedback with LLM-judge comparison, "
-    "use **Comprehensive Feedback** in the sidebar."
+    "use **LLM-as-Judge Feedback** in the sidebar."
 )
 st.divider()
 

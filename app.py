@@ -272,7 +272,7 @@ st.divider()
 st.header("Multi-Layer Comprehensive Evaluation")
 
 st.markdown("""
-Beyond the 3-layer composite, the **Comprehensive Run & Evaluate** page scores the agent
+Beyond the 3-layer composite, the **LLM-as-Judge Run & Evaluate** page scores the agent
 across **all 9 metrics** — giving a complete picture of agent behavior from deterministic
 accuracy to LLM-judged reasoning quality to plan-level assessment.
 """)
@@ -326,7 +326,7 @@ with col3:
 
 st.info(
     "💡 Use **Run & Evaluate** in the sidebar for fast core-metric runs (4 metrics, no LLM judge calls). "
-    "Use **Comprehensive Run & Evaluate** for the full 9-metric evaluation with failure diagnosis, "
+    "Use **LLM-as-Judge Run & Evaluate** for the full 9-metric evaluation with failure diagnosis, "
     "plan quality, tool efficacy, and cost tracking."
 )
 
@@ -423,19 +423,65 @@ and knowing exactly *why* — and what to fix.**
 
 st.info(
     "💡 **New in this release**: "
-    "**Run & Evaluate** now focuses on 4 core deterministic metrics (Answer F1, Retrieval F1, "
+    "**Run & Evaluate** now focuses on 4 deterministic metrics (Answer F1, Retrieval F1, "
     "Action Order, Efficiency) for fast iteration. "
-    "**Comprehensive Run & Evaluate** adds all 9 metrics including LLM-judge rubric scores "
+    "**LLM-as-Judge Run & Evaluate** adds all 9 metrics including LLM-judge rubric scores "
     "(Groundedness, Reasoning, Search Strategy) and plan-level scores (Plan Quality, Plan Adherence) "
     "with failure diagnosis, sub-goal decomposition, tool efficacy, and cost tracking. "
     "Run `python consistency_test.py` to measure brittleness across rephrased questions. "
     "Use **Failure Analysis** in the sidebar to see retrieval vs synthesis vs planning "
-    "breakdown across all dataset items."
+    "breakdown across all dataset items. "
+    "Use **Feedback Audit** to surface human-vs-LLM-judge disagreements and generate "
+    "rubric recalibration recommendations."
 )
 
 st.divider()
 
+# ══════════════════════════════════════════════════════════════════════════════
+# Scaled Evaluation & Config Comparison
+# ══════════════════════════════════════════════════════════════════════════════
+
+st.header("🚀 Scaled Evaluation & Configuration Comparison")
+
+st.markdown("""
+The pipeline supports full-scale evaluation across up to **896 questions**
+with multiple agent configurations for systematic comparison.
+
+**Scale the dataset:**
+```bash
+python setup_dataset_full.py              # 896 questions (448 bridge + 448 comparison)
+python setup_dataset_full.py --n 200      # custom size
+python setup_dataset_full.py --local-only # skip Langfuse, write dataset_local.json only
+```
+
+**Run full-scale evaluation:**
+```bash
+python evaluate_full.py                   # all 896 items, all 3 scoring layers
+python evaluate_full.py --no-judge        # skip LLM judge (faster, Layers 1+2 only)
+python evaluate_full.py --max-items 100   # quick test on 100 items
+```
+
+**Compare agent configurations:**
+```bash
+python evaluate_configs.py                # run all 3 configs (baseline, top-k, entity-focused)
+python evaluate_configs.py --max-items 20 # quick comparison on 20 items
+python evaluate_configs.py --configs baseline,v2_topk  # specific configs only
+```
+
+The three agent configurations are:
+| Config | Prompt | Top-K | Description |
+|--------|--------|-------|-------------|
+| `baseline` | `system_prompt.md` | unlimited | Current agent, no changes |
+| `v2_topk` | `system_prompt_v2_topk.md` | 3 | Precision-optimized with constrained retrieval |
+| `v3_entity` | `system_prompt_v3_entity.md` | unlimited | Entity-extraction & explicit hop chaining |
+
+All evaluation scripts support **checkpoint/resume** — if interrupted, re-run to continue
+from where you left off.
+""")
+
+st.divider()
+
 st.caption(
-    "Navigate using the sidebar: Dataset Explorer → Run & Evaluate (Core) → Core Feedback → "
-    "Comprehensive Run & Evaluate → Comprehensive Feedback → Failure Analysis"
+    "Navigate using the sidebar: Dataset Explorer → Run & Evaluate (Deterministic) → Deterministic Feedback → "
+    "LLM-as-Judge Run & Evaluate → LLM-as-Judge Feedback → Failure Analysis → Feedback Audit"
 )
